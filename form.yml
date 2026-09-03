@@ -1,0 +1,37 @@
+---
+cluster:
+  - 2e
+
+form:
+  - auto_accounts
+  - auto_queues
+  - global_bc_num_hours
+  - global_cores
+  - local_gpus
+  - global_memory
+  - global_advanced
+  - global_sbatch_options
+  - bc_email_on_started
+
+attributes:
+  global_bc_num_hours:
+    value: 4
+    max: 48
+
+  global_cores:
+    value: 4
+    min: 2
+    max: 24
+    step: 2
+
+  local_gpus:
+    label: "Number of GPUs"
+    widget: number_field
+    value: 1
+    max: 2
+
+  global_memory:
+    value: 8
+    min: 4
+    max: 128
+    step: 4

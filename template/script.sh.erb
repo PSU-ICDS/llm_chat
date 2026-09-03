@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+
+set -xe
+
+echo "======================================="
+echo "Starting Auth Shield Proxy"
+echo "======================================="
+export APPTAINERENV_EXTERNAL_PORT=${port}
+export APPTAINERENV_ADAPTR_PORT=${ADAPTR_PORT}
+export APPTAINERENV_PROXY_PASSWORD=${password}
+
+# Run the proxy using the node binary already inside the AnythingLLM image
+# Pointing to the proxy.js in the job's local directory ($PWD)
+apptainer exec \
+    --bind "${ANYTHINGLLM_USER_STORAGE}:/app/server/storage" \
+    "${ANYTHINGLLM_IMAGE}" \
+    node "${PWD}/proxy.js" > proxy.log 2>&1 &
+
+sleep 2
+
+echo "======================================="
+echo "Starting Adaptr"
+echo "======================================="
+export APPTAINERENV_EXTERNAL_PORT=${ADAPTR_PORT}
+export APPTAINERENV_TARGET="127.0.0.1:${ANYTHINGLLM_INTERNAL_PORT}"
+export APPTAINERENV_BASE_PATH="/rnode/${host}/${port}/"
+
+apptainer run \
+    ${ADAPTR_APPTAINER_IMAGE} \
+    > adaptr.log 2>&1 &
+
+sleep 5
+
+echo "======================================="
+echo "Starting Ollama"
+echo "======================================="
+export APPTAINERENV_OLLAMA_HOST="127.0.0.1:${OLLAMA_PORT}"
+
+apptainer exec \
+    --nv \
+    --bind ${OLLAMA_MODELS}:/root/.ollama \
+    ${OLLAMA_IMAGE} \
+    ollama serve \
+    > ollama.log 2>&1 &
+
+OLLAMA_PID=$!
+
+echo "Waiting for Ollama..."
+for i in $(seq 1 60); do
+    if curl -s "http://127.0.0.1:${OLLAMA_PORT}/api/tags" >/dev/null 2>&1; then
+        echo "Ollama is ready"
+        break
+    fi
+    sleep 2
+done
+
+echo "======================================="
+echo "Starting AnythingLLM"
+echo "======================================="
+
+# Create a unique instance name to prevent collisions if multiple jobs land on the same node
+INSTANCE_NAME="anythingllm_${SLURM_JOB_ID:-$(date +%s)}"
+
+apptainer instance start \
+    --nv \
+    --writable-tmpfs \
+    --env STORAGE_DIR=/app/server/storage \
+    -W /app \
+    --bind "${ANYTHINGLLM_USER_STORAGE}:/app/server/storage" \
+    --bind "${PWD}/hotdir:/app/collector/hotdir" \
+    --bind "${PWD}/.env:/app/server/.env" \
+    --bind "${PWD}/prisma_client:/app/server/node_modules/.prisma" \
+    "${ANYTHINGLLM_IMAGE}" \
+    "${INSTANCE_NAME}"
+
+apptainer exec \
+    -W /app \
+    --env STORAGE_DIR=/app/server/storage \
+    instance://${INSTANCE_NAME} \
+    /usr/local/bin/docker-entrypoint.sh
+

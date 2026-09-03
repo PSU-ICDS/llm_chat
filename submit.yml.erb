@@ -1,0 +1,18 @@
+<%-
+  slurm_args = [
+    "--mem=#{global_memory}G",
+    "--cpus-per-task=#{global_cores.to_i}",
+    "--gres=gpu:#{local_gpus}"
+  ]
+-%>
+
+---
+
+batch_connect:
+  template: "basic"
+
+script:
+  native:
+  <% slurm_args.each do |arg| %>
+    - "<%= arg %>"
+  <% end %>
