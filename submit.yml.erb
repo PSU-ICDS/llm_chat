@@ -2,7 +2,7 @@
   slurm_args = [
     "--mem=#{global_memory}G",
     "--cpus-per-task=#{global_cores}",
-    ("--gres=gpu:#{local_gpus}" if auto_accounts.match?(/(p100|a100|a100_3g|a100_1g|a40)/))
+    ("--gres=gpu:#{local_gpus}" if auto_accounts.match?(/(_p100_|_a100_|_a1003g_|_a1001g_|_a40_)/))
   ].compact
 -%>
 
