@@ -1,18 +1,20 @@
 <%-
   slurm_args = [
     "--mem=#{global_memory}G",
-    "--cpus-per-task=#{global_cores.to_i}",
-    "--gres=gpu:#{local_gpus}"
-  ]
+    "--cpus-per-task=#{global_cores}",
+    ("--gres=gpu:#{local_gpus}" if auto_accounts.match?(/(p100|a100|a100_3g|a100_1g|a40)/))
+  ].compact
 -%>
 
----
 
+<%- sbatch_args = global_advanced == "1" ? global_sbatch_options.to_s.split("\n").flat_map { |arg| arg.split } : [] %>
+<% slurm_args.concat(sbatch_args) %>
+
+---
 batch_connect:
   template: "basic"
-
 script:
   native:
-  <% slurm_args.each do |arg| %>
-    - "<%= arg %>"
-  <% end %>
+    <% slurm_args.each do |arg| %>
+      - "<%= arg %>"
+    <% end %>

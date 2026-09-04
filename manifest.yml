@@ -1,9 +1,13 @@
 ---
 name: LLM Lab
 category: Interactive Apps
-subcategory: AI Tools
+subcategory: Server Applications
 role: batch_connect
+metadata:
+  pintype: Interactive Servers
 description: |
-  Launches AnythingLLM with an Ollama backend.
-  Users may select from centrally managed Ollama models
-  through the AnythingLLM user interface.
+  Launch [AnythingLLM] with an [Ollama] backend.
+  Includes multiple pre-configured Ollama models.
+
+  [AnythingLLM]: https://anythingllm.com
+  [Ollama]: https://anythingllm.com

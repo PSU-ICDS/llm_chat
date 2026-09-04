@@ -2,20 +2,19 @@ log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') [INFO] $1"
 }
 
-export port=$(find_port localhost 8000 8999)
 export ADAPTR_PORT=$(find_port localhost 9000 9999)
 export ANYTHINGLLM_INTERNAL_PORT=$(find_port localhost 10000 10999)
 export OLLAMA_PORT=$(find_port localhost 11000 11999)
+export port=${ADAPTR_PORT} # for view.html.erb
 
 log "Host: ${host}"
-log "External Port (Auth Shield): ${port}"
 log "Adaptr Port: ${ADAPTR_PORT}"
 log "AnythingLLM Port: ${ANYTHINGLLM_INTERNAL_PORT}"
 log "Ollama Port: ${OLLAMA_PORT}"
 
 # Adaptr
 export ADAPTR_BASE_DIR="/storage/icds/ai/adaptr"
-export ADAPTR_APPTAINER_IMAGE="${ADAPTR_BASE_DIR}/adaptr.sif"
+export ADAPTR_APPTAINER_IMAGE="${ADAPTR_BASE_DIR}/adaptr-header.sif"
 
 # AnythingLLM
 export ANYTHINGLLM_BASE_DIR="/storage/icds/ai/anythingllm"
@@ -30,8 +29,7 @@ export OLLAMA_MODELS="/storage/icds/sw-ai/ollama/models"
 export ANYTHINGLLM_USER_STORAGE="${HOME}/.anythingllm_storage"
 
 # Generate session password
-password=$(tr -cd '[:alnum:]' < /dev/urandom 2>/dev/null | head -c${1:-16})
-export password
+export password="$(create_passwd 16)"
 
 mkdir -p "${ANYTHINGLLM_USER_STORAGE}"
 
@@ -48,87 +46,3 @@ OLLAMA_BASE_PATH=http://127.0.0.1:${OLLAMA_PORT}
 VECTOR_DB=lancedb
 EMBEDDING_ENGINE=native
 EOF
-
-# Write the Node.js Cookie Auth Shield Proxy to the JOB'S LOCAL DIRECTORY
-cat << 'EOF' > "${PWD}/proxy.js"
-const http = require('http');
-const net = require('net');
-const url = require('url');
-
-const TARGET_PORT = process.env.ADAPTR_PORT;
-const LISTEN_PORT = process.env.EXTERNAL_PORT;
-const PASSWORD = process.env.PROXY_PASSWORD;
-
-const server = http.createServer((req, res) => {
-    const parsedUrl = url.parse(req.url, true);
-    const cookies = req.headers.cookie || '';
-    
-    // 1. Check if already authenticated via cookie
-    const hasCookie = cookies.includes(`llm_auth=${PASSWORD}`);
-    
-    // 2. Check if authenticating via query token
-    if (parsedUrl.query.token === PASSWORD) {
-        // Strip token from URL to prevent sharing
-        delete parsedUrl.query.token;
-        const cleanUrl = url.format({ pathname: parsedUrl.pathname, query: parsedUrl.query });
-        
-        res.writeHead(302, {
-            'Set-Cookie': `llm_auth=${PASSWORD}; Path=/; HttpOnly`,
-            'Location': cleanUrl
-        });
-        return res.end();
-    }
-
-    // 3. Reject if no valid cookie
-    if (!hasCookie) {
-        res.writeHead(401, { 'Content-Type': 'text/html' });
-        return res.end('<html><body style="font-family:sans-serif; padding: 2rem;"><h2>Unauthorized</h2><p>Please connect to this session via the Open OnDemand dashboard.</p></body></html>');
-    }
-
-    // 4. Authenticated - Proxy the request to Adaptr
-    const options = {
-        hostname: '127.0.0.1',
-        port: TARGET_PORT,
-        path: req.url,
-        method: req.method,
-        headers: req.headers
-    };
-
-    const proxyReq = http.request(options, (proxyRes) => {
-        res.writeHead(proxyRes.statusCode, proxyRes.headers);
-        proxyRes.pipe(res, { end: true });
-    });
-    
-    req.pipe(proxyReq, { end: true });
-    proxyReq.on('error', (e) => {
-        res.writeHead(502);
-        res.end('Bad Gateway');
-    });
-});
-
-// Handle WebSocket upgrades (for chat streaming)
-server.on('upgrade', (req, socket, head) => {
-    const cookies = req.headers.cookie || '';
-    if (!cookies.includes(`llm_auth=${PASSWORD}`)) {
-        socket.end('HTTP/1.1 401 Unauthorized\r\n\r\n');
-        return;
-    }
-
-    const proxySocket = net.connect(TARGET_PORT, '127.0.0.1', () => {
-        proxySocket.write(
-            `${req.method} ${req.url} HTTP/${req.httpVersion}\r\n` +
-            Object.keys(req.headers).map(k => `${k}: ${req.headers[k]}`).join('\r\n') +
-            '\r\n\r\n' + head.toString('binary'), 'binary'
-        );
-        socket.pipe(proxySocket);
-        proxySocket.pipe(socket);
-    });
-    proxySocket.on('error', () => socket.end());
-    socket.on('error', () => proxySocket.end());
-});
-
-server.listen(LISTEN_PORT, () => {
-    console.log(`Cookie Auth Shield listening on ${LISTEN_PORT}, routing to ${TARGET_PORT}`);
-});
-EOF
-

@@ -3,27 +3,11 @@
 set -xe
 
 echo "======================================="
-echo "Starting Auth Shield Proxy"
-echo "======================================="
-export APPTAINERENV_EXTERNAL_PORT=${port}
-export APPTAINERENV_ADAPTR_PORT=${ADAPTR_PORT}
-export APPTAINERENV_PROXY_PASSWORD=${password}
-
-# Run the proxy using the node binary already inside the AnythingLLM image
-# Pointing to the proxy.js in the job's local directory ($PWD)
-apptainer exec \
-    --bind "${ANYTHINGLLM_USER_STORAGE}:/app/server/storage" \
-    "${ANYTHINGLLM_IMAGE}" \
-    node "${PWD}/proxy.js" > proxy.log 2>&1 &
-
-sleep 2
-
-echo "======================================="
 echo "Starting Adaptr"
 echo "======================================="
 export APPTAINERENV_EXTERNAL_PORT=${ADAPTR_PORT}
 export APPTAINERENV_TARGET="127.0.0.1:${ANYTHINGLLM_INTERNAL_PORT}"
-export APPTAINERENV_BASE_PATH="/rnode/${host}/${port}/"
+export APPTAINERENV_BASE_PATH="/rnode/${host}/${ADAPTR_PORT}/"
 
 apptainer run \
     ${ADAPTR_APPTAINER_IMAGE} \
@@ -78,4 +62,3 @@ apptainer exec \
     --env STORAGE_DIR=/app/server/storage \
     instance://${INSTANCE_NAME} \
     /usr/local/bin/docker-entrypoint.sh
-
